@@ -1,66 +1,73 @@
 const express = require('express');
 const axios = require('axios');
 const cors = require('cors');
+const dotenv = require('dotenv');
+
+dotenv.config();
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(cors());
 
-const NOTION_API_KEY = 'secret_Xv7beEVk5MT9h4a4luw8xG2KMSs5WLR5IploA0Ji47o'; // 替換為你的 Notion API 密鑰
-const DATABASE_ID = '73b494f299a249fbaf6bb5acdeb8d0e7';
+const NOTION_API_KEY = process.env.NOTION_API_KEY; // 從環境變數中獲取 Notion API 密鑰
+const DATABASE_ID = process.env.DATABASE_ID;
 
+// 獲取所有文章
 app.get('/notion-articles', async (req, res) => {
-  try {
-      console.log("Fetching data from Notion API...");
-      const response = await axios.post(
-          `https://api.notion.com/v1/databases/${DATABASE_ID}/query`,
-          {
-              filter: {
-                  property: "Status",
-                  status: {
-                      equals: "Publish"
-                  }
-              }
-          },
-          {
-              headers: {
-                  'Authorization': `Bearer ${NOTION_API_KEY}`,
-                  'Content-Type': 'application/json',
-                  'Notion-Version': '2022-06-28',
-              },
-          }
-      );
-      console.log("Data fetched from Notion API:", response.data);
+    try {
+        const response = await axios.post(
+            `https://api.notion.com/v1/databases/${DATABASE_ID}/query`,
+            {
+                filter: {
+                    property: "Status",
+                    status: {
+                        equals: "Publish"
+                    }
+                }
+            },
+            {
+                headers: {
+                    'Authorization': `Bearer ${NOTION_API_KEY}`,
+                    'Content-Type': 'application/json',
+                    'Notion-Version': '2022-06-28',
+                },
+            }
+        );
 
-      const articles = response.data.results.map(page => {
-          console.log('Processing page:', page);
-          const title = page.properties?.Title?.title?.[0]?.text?.content || 'No Title';
-          const description = page.properties?.Author?.rich_text?.[0]?.text?.content || 'No Description';
-          const url = page.url;
-          const date = page.properties?.Tags?.date?.start || '';
+        const articles = response.data.results.map(page => ({
+            id: page.id,
+            title: page.properties?.Title?.title?.[0]?.text?.content || 'No Title',
+            description: page.properties?.Author?.rich_text?.[0]?.text?.content || 'No Description',
+            url: page.url,
+            date: page.properties?.Tags?.date?.start || ''
+        }));
 
-          console.log(`Article ID: ${page.id}`);
-          console.log(`Title: ${title}`);
-          console.log(`Description: ${description}`);
-          console.log(`URL: ${url}`);
-          console.log(`Date: ${date}`);
+        res.json(articles);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
 
-          return {
-              id: page.id,
-              title: title,
-              description: description,
-              url: url,
-              date: date
-          };
-      });
+// 獲取單個頁面內容
+app.get('/notion-article/:id', async (req, res) => {
+    const pageId = req.params.id;
+    try {
+        const response = await axios.get(`https://api.notion.com/v1/blocks/${pageId}/children`, {
+            headers: {
+                'Authorization': `Bearer ${NOTION_API_KEY}`,
+                'Content-Type': 'application/json',
+                'Notion-Version': '2022-06-28',
+            },
+        });
 
-      res.json(articles);
-  } catch (error) {
-      console.error("Error fetching data from Notion API:", error);
-      res.status(500).json({ error: error.message });
-  }
+        const pageContent = response.data.results;
+        res.json(pageContent);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
 });
 
 app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+    console.log(`Server is running on port ${PORT}`);
 });
